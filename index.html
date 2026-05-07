@@ -143,16 +143,20 @@
   .scard.ac .sv { color:var(--rose4); }
   .scard .sv.sm { font-size:15px; }
 
-  .clist { display:flex; flex-direction:column; gap:8px; }
-  .crow { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:12px 14px; }
-  .ctop { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
-  .cleft { display:flex; align-items:center; gap:9px; }
-  .cemi { font-size:18px; }
-  .cname { font-size:14px; font-weight:400; }
-  .ccnt { font-size:11px; color:var(--text3); font-weight:300; margin-top:1px; }
-  .camt { font-family:'Cormorant Garamond',serif; font-size:17px; font-weight:500; color:var(--rose4); }
-  .barbg { height:3px; background:var(--rose1); border-radius:2px; overflow:hidden; }
-  .barfill { height:100%; background:var(--rose3); border-radius:2px; transition:width .7s cubic-bezier(.4,0,.2,1); }
+  /* pizza chart */
+  .pizza-wrap {
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:14px; padding:18px 16px;
+    display:flex; flex-direction:column; align-items:center; gap:18px;
+  }
+  .pizza-svg { width:180px; height:180px; flex-shrink:0; }
+  .pizza-legend { width:100%; display:flex; flex-direction:column; gap:8px; }
+  .pizza-leg-row { display:flex; align-items:center; gap:10px; }
+  .pizza-dot { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+  .pizza-leg-left { display:flex; align-items:center; gap:8px; flex:1; min-width:0; }
+  .pizza-leg-name { font-size:13px; font-weight:400; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .pizza-leg-pct { font-size:11px; color:var(--text3); font-weight:300; margin-left:auto; padding-left:6px; flex-shrink:0; }
+  .pizza-leg-amt { font-family:'Cormorant Garamond',serif; font-size:15px; font-weight:500; color:var(--rose4); flex-shrink:0; }
 
   .dchart { background:var(--surface); border:1px solid var(--border); border-radius:14px; padding:14px 14px 10px; }
   .dbars { display:flex; align-items:flex-end; gap:4px; height:64px; margin-bottom:8px; }
@@ -265,7 +269,7 @@
         <div class="scard"><div class="sl">top categoria</div><div class="sv sm" id="d-top">—</div></div>
       </div>
       <div class="slbl">por categoria</div>
-      <div class="clist" id="clist"><div class="empty"><div class="ei">🌸</div><p>nenhum dado ainda.</p></div></div>
+      <div id="clist"><div class="empty"><div class="ei">🌸</div><p>nenhum dado ainda.</p></div></div>
       <div class="slbl">por dia da semana</div>
       <div class="dchart"><div class="dbars" id="dbars"></div></div>
     </div>
@@ -390,20 +394,49 @@ function renderDash() {
   if (!catArr.length) {
     clist.innerHTML = `<div class="empty"><div class="ei">🌸</div><p>nenhum dado ainda.</p></div>`;
   } else {
-    const max = catArr[0][1];
-    clist.innerHTML = catArr.map(([cat, amt]) => {
-      const cnt = data.filter(e => e.category === cat).length;
-      return `<div class="crow">
-        <div class="ctop">
-          <div class="cleft">
-            <span class="cemi">${CATS[cat]||'📦'}</span>
-            <div><div class="cname">${cat}</div><div class="ccnt">${cnt} lançamento${cnt!==1?'s':''}</div></div>
-          </div>
-          <div class="camt">${brl(amt)}</div>
+    // rose palette for slices
+    const PALETTE = ['#e8b4aa','#f2cfc8','#d4897c','#fceee9','#c47a6e','#f0dbd6','#b5655a','#faf3f0','#e0a099','#edd4cf'];
+    const cx = 90, cy = 90, r = 80, rIn = 44;
+    let startAngle = -Math.PI / 2;
+    const slices = catArr.map(([cat, amt], i) => {
+      const pct = amt / total;
+      const angle = pct * 2 * Math.PI;
+      const endAngle = startAngle + angle;
+      const x1 = cx + r * Math.cos(startAngle), y1 = cy + r * Math.sin(startAngle);
+      const x2 = cx + r * Math.cos(endAngle),   y2 = cy + r * Math.sin(endAngle);
+      const ix1 = cx + rIn * Math.cos(startAngle), iy1 = cy + rIn * Math.sin(startAngle);
+      const ix2 = cx + rIn * Math.cos(endAngle),   iy2 = cy + rIn * Math.sin(endAngle);
+      const large = angle > Math.PI ? 1 : 0;
+      const d = `M${ix1},${iy1} L${x1},${y1} A${r},${r} 0 ${large} 1 ${x2},${y2} L${ix2},${iy2} A${rIn},${rIn} 0 ${large} 0 ${ix1},${iy1} Z`;
+      const color = PALETTE[i % PALETTE.length];
+      startAngle = endAngle;
+      return { cat, amt, pct, d, color };
+    });
+
+    const svgSlices = slices.map(s =>
+      `<path d="${s.d}" fill="${s.color}" stroke="var(--bg)" stroke-width="2"/>`
+    ).join('');
+
+    const legend = slices.map(s => `
+      <div class="pizza-leg-row">
+        <div class="pizza-leg-left">
+          <div class="pizza-dot" style="background:${s.color}"></div>
+          <span class="pizza-leg-name">${CATS[s.cat]||'📦'} ${s.cat}</span>
+          <span class="pizza-leg-pct">${Math.round(s.pct*100)}%</span>
         </div>
-        <div class="barbg"><div class="barfill" style="width:${(amt/max)*100}%"></div></div>
+        <div class="pizza-leg-amt">${brl(s.amt)}</div>
+      </div>`).join('');
+
+    clist.innerHTML = `
+      <div class="pizza-wrap">
+        <svg class="pizza-svg" viewBox="0 0 180 180" xmlns="http://www.w3.org/2000/svg">
+          ${svgSlices}
+          <circle cx="${cx}" cy="${cy}" r="${rIn}" fill="var(--bg)"/>
+          <text x="${cx}" y="${cy - 6}" text-anchor="middle" font-family="Cormorant Garamond,serif" font-size="13" fill="var(--text3)" font-weight="300">total</text>
+          <text x="${cx}" y="${cy + 14}" text-anchor="middle" font-family="Cormorant Garamond,serif" font-size="15" fill="var(--rose4)" font-weight="500">${brl(total)}</text>
+        </svg>
+        <div class="pizza-legend">${legend}</div>
       </div>`;
-    }).join('');
   }
 
   const DLBL = ['dom','seg','ter','qua','qui','sex','sáb'];
